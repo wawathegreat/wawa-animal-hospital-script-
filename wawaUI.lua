@@ -1,19 +1,20 @@
--- 1. Load the WawaUi library
+-- 1. Load the WawaUi library directly from GitHub
 local WawaUi = loadstring(game:HttpGet("https://raw.githubusercontent.com/wawathegreat/WawaUi/main/WawaUI.lua"))()
 
 -- Services & Setup
 local collectionService = game:GetService("CollectionService")
 local replicatedStorage = game:GetService("ReplicatedStorage")
+local proximityPromptService = game:GetService("ProximityPromptService")
 local players = game:GetService("Players")
 local workspace = game:GetService("Workspace")
 local plr = players.LocalPlayer
 
-local GameLib = require(replicatedStorage:WaitForChild("Lib"))
-
 -- Feature States
 local autoHeartbeatActive = false
 local npcEspActive = false
+local instantPromptsActive = false
 local activeHighlights = {}
+local originalHoldDurations = {}
 
 -- 2. Create Window and Tab
 local Window = WawaUi.CreateWindow("wawa animal script")
@@ -52,7 +53,51 @@ MainTab:AddToggle(
     end
 )
 
--- 5. NPC ESP Helper Functions
+-- 5. Proximity Prompt Helper Functions
+local function applyInstantPrompt(prompt)
+    if not originalHoldDurations[prompt] then
+        originalHoldDurations[prompt] = prompt.HoldDuration
+    end
+    prompt.HoldDuration = 0
+end
+
+local function restorePromptDuration(prompt)
+    if originalHoldDurations[prompt] ~= nil then
+        prompt.HoldDuration = originalHoldDurations[prompt]
+    end
+end
+
+-- Hook onto new prompts as they appear
+proximityPromptService.PromptShown:Connect(function(prompt)
+    if instantPromptsActive then
+        applyInstantPrompt(prompt)
+    end
+end)
+
+-- Add Instant Proximity Prompts Toggle
+MainTab:AddToggle(
+    "Instant Proximity Prompts",
+    "Removes hold time on all interaction prompts",
+    false,
+    function(Value)
+        instantPromptsActive = Value
+        if Value then
+            for _, descendant in ipairs(workspace:GetDescendants()) do
+                if descendant:IsA("ProximityPrompt") then
+                    applyInstantPrompt(descendant)
+                end
+            end
+        else
+            for prompt, _ in pairs(originalHoldDurations) do
+                if prompt and prompt.Parent then
+                    restorePromptDuration(prompt)
+                end
+            end
+        end
+    end
+)
+
+-- 6. NPC ESP Helper Functions
 local function removeESP(model)
     if activeHighlights[model] then
         activeHighlights[model]:Destroy()
@@ -107,7 +152,7 @@ task.spawn(function()
     end
 end)
 
--- 6. Add NPC ESP Toggle
+-- 7. Add NPC ESP Toggle
 MainTab:AddToggle(
     "NPC Skinwalker ESP",
     "Highlights Skinwalker NPCs Red and Normal NPCs Green",
@@ -117,21 +162,3 @@ MainTab:AddToggle(
         updateNPCHighlights()
     end
 )
-
--- 7. Minigame Override Logic
-local function v33(p26)
-    if autoHeartbeatActive then
-        collectionService:AddTag(plr, "InMinigame")
-        task.wait(0.1)
-        GameLib.HeartMinigameComplete(true)
-        collectionService:RemoveTag(plr, "InMinigame")
-        return
-    end
-end
-
-if GameLib.Inject then
-    GameLib.Inject("StartCircleMinigame", v33)
-    GameLib.Inject("EndCircleMinigame", function() 
-        collectionService:RemoveTag(plr, "InMinigame") 
-    end)
-end
